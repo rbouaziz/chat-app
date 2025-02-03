@@ -3,8 +3,18 @@ from fastapi.responses import JSONResponse
 from typing import List
 import sqlite3
 import json
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Autoriser toutes les origines (à sécuriser en prod)
+    allow_credentials=True,
+    allow_methods=["*"],  # Autoriser toutes les méthodes (GET, POST, etc.)
+    allow_headers=["*"],  # Autoriser tous les headers
+)
+
 
 # Connexion SQLite
 conn = sqlite3.connect("chat.db", check_same_thread=False)
