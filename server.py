@@ -43,17 +43,27 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            message = json.loads(data)
-            username = message.get("username")
-            content = message.get("content")
+            try:
+                message = json.loads(data)
+                username = message.get("username")
+                content = message.get("content")
 
-            # Stocker le message dans SQLite
-            cursor.execute("INSERT INTO messages (username, content, timestamp) VALUES (?, ?, datetime('now'))",
-                           (username, content))
-            conn.commit()
+                # Vérification du format
+                if not username or not content:
+                    await websocket.send_text(json.dumps({"error": "Le message doit contenir un 'username' et un 'content'"}))
+                    continue  # Ignore ce message mal formaté
 
-            # Diffuser à tous les utilisateurs connectés
-            await manager.broadcast(json.dumps({"username": username, "content": content}))
+                # Stocker le message dans la base de données
+                cursor.execute("INSERT INTO messages (username, content, timestamp) VALUES (?, ?, datetime('now'))",
+                               (username, content))
+                conn.commit()
+
+                # Diffuser le message à tous les utilisateurs connectés
+                await manager.broadcast(json.dumps({"username": username, "content": content}))
+
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({"error": "Format JSON invalide"}))
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -65,15 +75,22 @@ async def get_messages():
 
 @app.post("/messages")
 async def post_message(data: dict):
-    username = data.get("username")
-    content = data.get("content")
+    try:
+        username = data.get("username")
+        content = data.get("content")
 
-    if not username or not content:
-        return JSONResponse({"error": "Username and content required"}, status_code=400)
+        # Vérification des champs obligatoires
+        if not username or not content:
+            return JSONResponse({"error": "Le message doit contenir 'username' et 'content'"}, status_code=400)
 
-    cursor.execute("INSERT INTO messages (username, content, timestamp) VALUES (?, ?, datetime('now'))",
-                   (username, content))
-    conn.commit()
+        # Stocker dans la base de données
+        cursor.execute("INSERT INTO messages (username, content, timestamp) VALUES (?, ?, datetime('now'))",
+                       (username, content))
+        conn.commit()
 
-    await manager.broadcast(json.dumps({"username": username, "content": content}))
-    return JSONResponse({"message": "Message sent"})
+        # Diffuser à tous les utilisateurs connectés
+        await manager.broadcast(json.dumps({"username": username, "content": content}))
+        return JSONResponse({"message": "Message envoyé"})
+
+    except Exception as e:
+        return JSONResponse({"error": f"Erreur interne : {str(e)}"}, status_code=500)
